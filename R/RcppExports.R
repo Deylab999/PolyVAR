@@ -41,6 +41,14 @@ levene_rint_cpp <- function(e_rint, grp_idx0, grp_idx1, grp_idx2) {
     .Call(`_polyvar_levene_rint_cpp`, e_rint, grp_idx0, grp_idx1, grp_idx2)
 }
 
+levene_norint_cpp <- function(e_ols, grp_idx0, grp_idx1, grp_idx2) {
+    .Call(`_polyvar_levene_norint_cpp`, e_ols, grp_idx0, grp_idx1, grp_idx2)
+}
+
+bf_norint_cpp <- function(e_ols, grp_idx0, grp_idx1, grp_idx2) {
+    .Call(`_polyvar_bf_norint_cpp`, e_ols, grp_idx0, grp_idx1, grp_idx2)
+}
+
 bf_rint_cpp <- function(e_rint, grp_idx0, grp_idx1, grp_idx2) {
     .Call(`_polyvar_bf_rint_cpp`, e_rint, grp_idx0, grp_idx1, grp_idx2)
 }

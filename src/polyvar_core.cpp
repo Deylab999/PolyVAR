@@ -161,13 +161,13 @@ List levene_rint_cpp(NumericVector e_rint, IntegerVector grp_idx0,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// METHOD 2: BROWN-FORSYTHE + RINT
+// Shared helper: group median (used by BF and BF-noRINT)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static double group_median(NumericVector e_rint, IntegerVector idx) {
+static double group_median(NumericVector v_in, IntegerVector idx) {
   int m = idx.size();
   std::vector<double> v(m);
-  for (int j = 0; j < m; j++) v[j] = e_rint[idx[j]];
+  for (int j = 0; j < m; j++) v[j] = v_in[idx[j]];
   std::nth_element(v.begin(), v.begin() + m / 2, v.end());
   double med = v[m / 2];
   if (m % 2 == 0) {
@@ -176,6 +176,121 @@ static double group_median(NumericVector e_rint, IntegerVector idx) {
   }
   return med;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// METHOD 1b: LEVENE WITHOUT RINT  (Wang et al. 2019 recommendation)
+// Applied directly to OLS residuals; no rank transformation.
+// Preserves Levene's original form but removes the RINT-induced
+// contamination coupling.  Still susceptible to non-normality and
+// the residual (non-RINT) contamination NCP at large n.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// [[Rcpp::export]]
+List levene_norint_cpp(NumericVector e_ols, IntegerVector grp_idx0,
+                       IntegerVector grp_idx1, IntegerVector grp_idx2) {
+  int n = e_ols.size();
+  int K = 3;
+  std::vector<IntegerVector> grps = {grp_idx0, grp_idx1, grp_idx2};
+  std::vector<int> n_g = {(int)grp_idx0.size(),
+                           (int)grp_idx1.size(),
+                           (int)grp_idx2.size()};
+
+  for (int k = 0; k < K; k++) if (n_g[k] < 2) {
+    return List::create(Named("T_stat") = NA_REAL, Named("pval") = NA_REAL);
+  }
+
+  // Group means of OLS residuals
+  std::vector<double> mu_g(K, 0.0);
+  for (int k = 0; k < K; k++) {
+    for (int i : grps[k]) mu_g[k] += e_ols[i];
+    mu_g[k] /= n_g[k];
+  }
+
+  // Absolute deviations from group mean
+  std::vector<double> a(n);
+  for (int k = 0; k < K; k++)
+    for (int i : grps[k]) a[i] = std::abs(e_ols[i] - mu_g[k]);
+
+  // Group means and grand mean of absolute deviations
+  std::vector<double> a_bar_g(K, 0.0);
+  double a_bar = 0.0;
+  for (int k = 0; k < K; k++) {
+    for (int i : grps[k]) a_bar_g[k] += a[i];
+    a_bar_g[k] /= n_g[k];
+    a_bar += a_bar_g[k] * n_g[k];
+  }
+  a_bar /= n;
+
+  double SS_B = 0.0, SS_W = 0.0;
+  for (int k = 0; k < K; k++) {
+    SS_B += n_g[k] * std::pow(a_bar_g[k] - a_bar, 2.0);
+    for (int i : grps[k]) SS_W += std::pow(a[i] - a_bar_g[k], 2.0);
+  }
+  if (SS_W < 1e-15) return List::create(Named("T_stat") = NA_REAL,
+                                         Named("pval")   = NA_REAL);
+  double F_stat = ((double)(n - K) / (double)(K - 1)) * SS_B / SS_W;
+  double T_stat = (double)(K - 1) * F_stat;
+  double pval   = R::pchisq(T_stat, K - 1, 0, 0);
+  return List::create(Named("T_stat") = T_stat,
+                      Named("pval")   = pval,
+                      Named("F_stat") = F_stat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// METHOD 2b: BROWN-FORSYTHE WITHOUT RINT  (median-based, no rank transform)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// [[Rcpp::export]]
+List bf_norint_cpp(NumericVector e_ols, IntegerVector grp_idx0,
+                   IntegerVector grp_idx1, IntegerVector grp_idx2) {
+  int n = e_ols.size();
+  int K = 3;
+  std::vector<IntegerVector> grps = {grp_idx0, grp_idx1, grp_idx2};
+  std::vector<int> n_g = {(int)grp_idx0.size(),
+                           (int)grp_idx1.size(),
+                           (int)grp_idx2.size()};
+
+  for (int k = 0; k < K; k++) if (n_g[k] < 2) {
+    return List::create(Named("T_stat") = NA_REAL, Named("pval") = NA_REAL);
+  }
+
+  // Group medians of OLS residuals
+  std::vector<double> med_g(K);
+  for (int k = 0; k < K; k++) med_g[k] = group_median(e_ols, grps[k]);
+
+  // Absolute deviations from group median
+  std::vector<double> a(n);
+  for (int k = 0; k < K; k++)
+    for (int i : grps[k]) a[i] = std::abs(e_ols[i] - med_g[k]);
+
+  std::vector<double> a_bar_g(K, 0.0);
+  double a_bar = 0.0;
+  for (int k = 0; k < K; k++) {
+    for (int i : grps[k]) a_bar_g[k] += a[i];
+    a_bar_g[k] /= n_g[k];
+    a_bar += a_bar_g[k] * n_g[k];
+  }
+  a_bar /= n;
+
+  double SS_B = 0.0, SS_W = 0.0;
+  for (int k = 0; k < K; k++) {
+    SS_B += n_g[k] * std::pow(a_bar_g[k] - a_bar, 2.0);
+    for (int i : grps[k]) SS_W += std::pow(a[i] - a_bar_g[k], 2.0);
+  }
+  if (SS_W < 1e-15) return List::create(Named("T_stat") = NA_REAL,
+                                         Named("pval")   = NA_REAL);
+  double F_stat = ((double)(n - K) / (double)(K - 1)) * SS_B / SS_W;
+  double T_stat = (double)(K - 1) * F_stat;
+  double pval   = R::pchisq(T_stat, K - 1, 0, 0);
+  return List::create(Named("T_stat") = T_stat,
+                      Named("pval")   = pval,
+                      Named("F_stat") = F_stat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// METHOD 2: BROWN-FORSYTHE + RINT
+// ─────────────────────────────────────────────────────────────────────────────
 
 // [[Rcpp::export]]
 List bf_rint_cpp(NumericVector e_rint, IntegerVector grp_idx0,
@@ -546,9 +661,10 @@ DataFrame vqtl_batch_cpp(NumericMatrix G,        // n x M genotype matrix
     // RINT
     NumericVector e_rint = apply_rint(e, phi_inv);
 
-    // Group indices (for Levene/BF/Bartlett)
+    // Group indices (for Levene/BF/Bartlett variants)
     List grp;
-    if (method == "levene" || method == "bf" || method == "bartlett") {
+    if (method == "levene" || method == "bf" || method == "bartlett" ||
+        method == "levene_norint" || method == "bf_norint") {
       grp = get_groups(g_raw);
     }
 
@@ -557,8 +673,14 @@ DataFrame vqtl_batch_cpp(NumericMatrix G,        // n x M genotype matrix
     if (method == "levene") {
       result = levene_rint_cpp(e_rint,
         grp["g0"], grp["g1"], grp["g2"]);
+    } else if (method == "levene_norint") {
+      result = levene_norint_cpp(e,
+        grp["g0"], grp["g1"], grp["g2"]);
     } else if (method == "bf") {
       result = bf_rint_cpp(e_rint,
+        grp["g0"], grp["g1"], grp["g2"]);
+    } else if (method == "bf_norint") {
+      result = bf_norint_cpp(e,
         grp["g0"], grp["g1"], grp["g2"]);
     } else if (method == "bartlett") {
       result = bartlett_rint_cpp(e_rint,

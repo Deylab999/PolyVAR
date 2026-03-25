@@ -121,6 +121,14 @@ vqtl_snp <- function(r, g_raw, method = "polyvar",
     if (is.na(sc$T_C)) return(list(T_stat=NA,pval=NA,beta_hat=bhat,gamma2_hat=NA))
     cal    <- polyvar_calibrate_cpp(sc$T_C, bhat, lut$beta_abs, lut$q95)
     T_j    <- cal$T_cal;  p_j <- cal$pval
+  } else if (method %in% c("levene_norint", "bf_norint")) {
+    # Wang et al. 2019: Levene/BF on OLS residuals, no RINT
+    grp <- get_groups(as.numeric(g_raw))
+    res <- if (method == "levene_norint")
+      levene_norint_cpp(e, grp$g0, grp$g1, grp$g2)
+    else
+      bf_norint_cpp(e, grp$g0, grp$g1, grp$g2)
+    T_j <- res$T_stat;  p_j <- res$pval
   } else {
     e_rint <- apply_rint(e, phi_inv)
     grp    <- get_groups(as.numeric(g_raw))

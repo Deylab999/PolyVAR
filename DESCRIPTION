@@ -1,7 +1,7 @@
 Package: polyvar
 Type: Package
 Title: Contrastive Variance QTL Detection (vQTL) via PolyVAR
-Version: 0.5.0
+Version: 0.5.1
 Date: 2026-03-24
 Authors@R: c(
     person("PolyVAR", "Development Team", role = c("aut", "cre"),
@@ -23,6 +23,6 @@ Encoding: UTF-8
 RoxygenNote: 7.3.0
 SystemRequirements: C++14
 NeedsCompilation: yes
-Packaged: 2026-03-25 01:10:43 UTC; root
+Packaged: 2026-03-25 12:00:03 UTC; root
 Author: PolyVAR Development Team [aut, cre]
 Maintainer: PolyVAR Development Team <polyvar@deylab.org>

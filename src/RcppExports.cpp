@@ -131,6 +131,34 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// levene_norint_cpp
+List levene_norint_cpp(NumericVector e_ols, IntegerVector grp_idx0, IntegerVector grp_idx1, IntegerVector grp_idx2);
+RcppExport SEXP _polyvar_levene_norint_cpp(SEXP e_olsSEXP, SEXP grp_idx0SEXP, SEXP grp_idx1SEXP, SEXP grp_idx2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type e_ols(e_olsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx0(grp_idx0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx1(grp_idx1SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx2(grp_idx2SEXP);
+    rcpp_result_gen = Rcpp::wrap(levene_norint_cpp(e_ols, grp_idx0, grp_idx1, grp_idx2));
+    return rcpp_result_gen;
+END_RCPP
+}
+// bf_norint_cpp
+List bf_norint_cpp(NumericVector e_ols, IntegerVector grp_idx0, IntegerVector grp_idx1, IntegerVector grp_idx2);
+RcppExport SEXP _polyvar_bf_norint_cpp(SEXP e_olsSEXP, SEXP grp_idx0SEXP, SEXP grp_idx1SEXP, SEXP grp_idx2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type e_ols(e_olsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx0(grp_idx0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx1(grp_idx1SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp_idx2(grp_idx2SEXP);
+    rcpp_result_gen = Rcpp::wrap(bf_norint_cpp(e_ols, grp_idx0, grp_idx1, grp_idx2));
+    return rcpp_result_gen;
+END_RCPP
+}
 // bf_rint_cpp
 List bf_rint_cpp(NumericVector e_rint, IntegerVector grp_idx0, IntegerVector grp_idx1, IntegerVector grp_idx2);
 RcppExport SEXP _polyvar_bf_rint_cpp(SEXP e_rintSEXP, SEXP grp_idx0SEXP, SEXP grp_idx1SEXP, SEXP grp_idx2SEXP) {
@@ -332,6 +360,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_polyvar_apply_rint", (DL_FUNC) &_polyvar_apply_rint, 2},
     {"_polyvar_get_groups", (DL_FUNC) &_polyvar_get_groups, 1},
     {"_polyvar_levene_rint_cpp", (DL_FUNC) &_polyvar_levene_rint_cpp, 4},
+    {"_polyvar_levene_norint_cpp", (DL_FUNC) &_polyvar_levene_norint_cpp, 4},
+    {"_polyvar_bf_norint_cpp", (DL_FUNC) &_polyvar_bf_norint_cpp, 4},
     {"_polyvar_bf_rint_cpp", (DL_FUNC) &_polyvar_bf_rint_cpp, 4},
     {"_polyvar_bartlett_rint_cpp", (DL_FUNC) &_polyvar_bartlett_rint_cpp, 4},
     {"_polyvar_dglm_cpp", (DL_FUNC) &_polyvar_dglm_cpp, 3},
