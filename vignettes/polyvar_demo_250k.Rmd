@@ -1,0 +1,389 @@
+---
+title: "PolyVAR Demo: Separating True vQTLs from mQTL Artefacts"
+subtitle: "n = 250,000 — Three pipelines: Naive RINT · Wang 2019 (no-RINT) · PolyVAR"
+author: "PolyVAR Development Team"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: { collapsed: false, smooth_scroll: true }
+    toc_depth: 3
+    self_contained: true
+    fig_width: 14
+    fig_height: 6
+params:
+  n:            250000
+  seed:         2026
+  M_mqtl:       30
+  M_null:       19
+  M_causal:     1
+  beta_mqtl:    0.50
+  beta_causal:  0.50
+  delta_causal: 0.15
+  maf:          0.25
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE)
+suppressPackageStartupMessages({
+  library(polyvar); library(ggplot2); library(data.table)
+})
+```
+
+```{r constants}
+set.seed(params$seed)
+N       <- params$n
+p       <- params$maf; q <- 1-p; sq <- sqrt(2*p*q)
+BETA_M  <- params$beta_mqtl
+BETA_C  <- params$beta_causal
+DELTA   <- params$delta_causal
+M_MQTL  <- params$M_mqtl
+M_NULL  <- params$M_null
+M_CAU   <- params$M_causal
+M_TOTAL <- M_MQTL + M_NULL + M_CAU
+CAUSAL_J <- M_MQTL + M_NULL + 1L
+
+MCOLS <- c(
+  "PolyVAR"          = "#1A5276",
+  "PolyVAR-lite"     = "#5DADE2",
+  "Levene (noRINT)"  = "#1E8449",
+  "BF (noRINT)"      = "#52BE80",
+  "Levene (naive)"   = "#C0392B",
+  "BF (naive)"       = "#E67E22",
+  "Bartlett (naive)" = "#8E44AD"
+)
+TCOLS <- c("mQTL only"="#E74C3C","Null"="#95A5A6","True vQTL"="#1A5276")
+METHOD_LEVELS <- names(MCOLS)
+TIER_MAP <- c(
+  "PolyVAR"          = "PolyVAR",
+  "PolyVAR-lite"     = "PolyVAR",
+  "Levene (noRINT)"  = "Wang 2019 (no RINT)",
+  "BF (noRINT)"      = "Wang 2019 (no RINT)",
+  "Levene (naive)"   = "Naive RINT",
+  "BF (naive)"       = "Naive RINT",
+  "Bartlett (naive)" = "Naive RINT"
+)
+```
+
+```{r simulate, cache=TRUE, cache.extra=params$seed}
+phi_inv <- make_phi_inv(N)
+lut     <- get_default_lut(N)
+
+snp_info <- data.table(
+  j       = seq_len(M_TOTAL),
+  snp     = paste0("SNP", seq_len(M_TOTAL)),
+  type    = c(rep("mQTL only",M_MQTL), rep("Null",M_NULL), rep("True vQTL",M_CAU)),
+  beta    = c(rep(BETA_M,M_MQTL), rep(0,M_NULL), rep(BETA_C,M_CAU)),
+  delta   = c(rep(0,M_MQTL+M_NULL), rep(DELTA,M_CAU)),
+  is_vqtl = c(rep(FALSE,M_MQTL+M_NULL), rep(TRUE,M_CAU))
+)
+
+G <- matrix(rbinom(N*M_TOTAL, 2L, p), N, M_TOTAL)
+
+run_snp <- function(j) {
+  g_raw   <- G[,j]; g_star <- (g_raw-2*p)/sq
+  sigma_i <- sqrt(1 + snp_info$delta[j]^2 * g_star^2)
+  r <- snp_info$beta[j]*g_star + sigma_i*rnorm(N)
+  r <- (r-mean(r))/sd(r)
+  grp <- get_groups(as.numeric(g_raw))
+
+  # Tier 1: Naive — RINT raw LOCO residual, no OLS
+  er_naive <- apply_rint(r, phi_inv)
+  lev_n  <- levene_rint_cpp(er_naive, grp$g0, grp$g1, grp$g2)
+  bf_n   <- bf_rint_cpp(er_naive, grp$g0, grp$g1, grp$g2)
+  bart_n <- bartlett_rint_cpp(er_naive, grp$g0, grp$g1, grp$g2)
+
+  # Tier 2: Wang 2019 — OLS first, then Levene/BF without RINT
+  e_ols <- ols_resid(r, g_star)$e
+  lev_w <- levene_norint_cpp(e_ols, grp$g0, grp$g1, grp$g2)
+  bf_w  <- bf_norint_cpp(e_ols, grp$g0, grp$g1, grp$g2)
+
+  # Tier 3: PolyVAR
+  pv  <- polyvar_full_cpp(r, g_raw, phi_inv)
+  ls  <- polyvar_lite_setup_fast(r, 100L)
+  pvl <- polyvar_lite_fast(r, g_raw, ls$breaks, ls$bin_q)
+
+  data.table(
+    j=j, snp=snp_info$snp[j],
+    method=METHOD_LEVELS,
+    T_stat=c(pv$T_C, pvl$T_C, lev_w$T_stat, bf_w$T_stat,
+             lev_n$T_stat, bf_n$T_stat, bart_n$T_stat),
+    pval  =c(pv$pval, pvl$pval, lev_w$pval, bf_w$pval,
+             lev_n$pval, bf_n$pval, bart_n$pval)
+  )
+}
+
+results <- rbindlist(lapply(seq_len(M_TOTAL), run_snp))
+results <- merge(results, snp_info[,.(j,snp,type,delta,is_vqtl)], by=c("j","snp"))
+results[, method  := factor(method,  levels=METHOD_LEVELS)]
+results[, type    := factor(type,    levels=names(TCOLS))]
+results[, tier    := factor(TIER_MAP[as.character(method)],
+                            levels=c("Naive RINT","Wang 2019 (no RINT)","PolyVAR"))]
+results[, pval_bh := p.adjust(pval,"BH"), by=method]
+results[, sig_bh  := pval_bh < 0.05]
+results[, neglogp := -log10(pmax(pval_bh,1e-300))]
+results[, snp     := factor(snp, levels=paste0("SNP",seq_len(M_TOTAL)))]
+```
+
+---
+
+## Scenario
+
+```{r setup_tbl}
+knitr::kable(data.table(
+  Block=c(sprintf("Block 1: mQTL  (SNP1-SNP%d)",M_MQTL),
+          sprintf("Block 2: Null  (SNP%d-SNP%d)",M_MQTL+1,M_MQTL+M_NULL),
+          sprintf("Block 3: vQTL  (SNP%d)",M_TOTAL)),
+  n=c(M_MQTL,M_NULL,M_CAU),
+  beta=c(BETA_M,0,BETA_C), delta=c(0,0,DELTA),
+  Truth=c("Null vQTL","Null vQTL","**True vQTL**"),
+  Expected=c(
+    "FP for naive RINT; partial fix by Wang 2019; zero FP for PolyVAR",
+    "True negatives for all methods",
+    "TP — all methods detect; only PolyVAR has clean FP profile in Block 1")),
+  align="llcccl")
+```
+
+**Three pipelines:**
+
+| Tier | Pipeline | Contamination NCP |
+|---|---|---|
+| **Naive RINT** | RINT on raw LOCO residual → Levene / BF / Bartlett | ∝ n·β⁴ — largest |
+| **Wang 2019** | OLS first → Levene / BF without RINT | Reduced but not zero |
+| **PolyVAR** | OLS → RINT → score-space FWL projection | **= 0 exactly** |
+
+---
+
+## Results
+
+### Manhattan plot
+
+```{r manhattan, fig.height=10, fig.width=14}
+sig_line <- -log10(0.05)
+ymax <- max(results$neglogp, na.rm=TRUE)*1.12
+
+ggplot(results, aes(x=snp, y=neglogp, colour=type, shape=is_vqtl, size=is_vqtl)) +
+  annotate("rect",xmin=0.5,xmax=M_MQTL+0.5,ymin=0,ymax=ymax,fill="#FDEDEC",alpha=0.30)+
+  annotate("rect",xmin=M_MQTL+M_NULL+0.5,xmax=M_TOTAL+0.5,
+           ymin=0,ymax=ymax,fill="#EBF5FB",alpha=0.40)+
+  geom_hline(yintercept=sig_line,linetype="dashed",colour="grey20",linewidth=0.65)+
+  annotate("text",x=1.2,y=sig_line+0.12,
+           label="BH FDR=5%",hjust=0,size=2.9,colour="grey25")+
+  annotate("label",x=M_MQTL/2,y=ymax*0.93,
+           label=sprintf("Block 1\nmQTL\nbeta=%.2f",BETA_M),
+           size=2.7,colour="#C0392B",fontface="bold",fill="white",label.size=0)+
+  annotate("label",x=M_MQTL+M_NULL/2,y=ymax*0.93,
+           label="Block 2\nNull",
+           size=2.7,colour="#7F8C8D",fill="white",label.size=0)+
+  annotate("label",x=M_TOTAL-0.3,y=ymax*0.93,
+           label=sprintf("Block 3\nTrue vQTL\ndelta=%.2f",DELTA),
+           size=2.7,colour="#1A5276",fontface="bold",fill="white",label.size=0,hjust=1)+
+  geom_point(alpha=0.88)+
+  scale_colour_manual(values=TCOLS,name="SNP type")+
+  scale_shape_manual(values=c("FALSE"=16,"TRUE"=18),guide="none")+
+  scale_size_manual(values=c("FALSE"=1.8,"TRUE"=4.5),guide="none")+
+  scale_x_discrete(breaks=paste0("SNP",c(1,10,M_MQTL,M_MQTL+1,
+                                          M_MQTL+M_NULL,M_TOTAL)))+
+  scale_y_continuous(limits=c(0,ymax),expand=c(0,0))+
+  facet_wrap(~method,nrow=3,ncol=3)+
+  labs(title=expression("Manhattan: BH-adjusted "*-log[10](p)*
+                        " — all 7 methods, three pipeline tiers"),
+       subtitle=sprintf("n=%s  |  %d mQTL SNPs (Block 1, beta=%.2f)  |  true vQTL=SNP%d (diamond)  |  BH FDR=5%%",
+                        format(N,big.mark=","),M_MQTL,BETA_M,M_TOTAL),
+       x=NULL,y=expression(-log[10](p[BH])))+
+  theme_bw(base_size=10)+
+  theme(strip.background=element_rect(fill="#1B2631",colour=NA),
+        strip.text=element_text(colour="white",face="bold",size=10),
+        axis.text.x=element_text(angle=45,hjust=1,size=7),
+        panel.grid.minor=element_blank(),panel.grid.major.x=element_blank(),
+        legend.position="bottom",panel.spacing=unit(0.5,"lines"),
+        plot.title=element_text(face="bold",size=13),
+        plot.subtitle=element_text(size=8.5,colour="grey35"))
+```
+
+---
+
+### T statistics across all SNPs
+
+```{r tstat, fig.height=10, fig.width=14}
+ymax_t <- max(results$T_stat,na.rm=TRUE)*1.05
+
+ggplot(results,aes(x=snp,y=T_stat,colour=type,shape=is_vqtl,size=is_vqtl))+
+  annotate("rect",xmin=0.5,xmax=M_MQTL+0.5,ymin=0,ymax=ymax_t,
+           fill="#FDEDEC",alpha=0.30)+
+  annotate("rect",xmin=M_MQTL+M_NULL+0.5,xmax=M_TOTAL+0.5,ymin=0,ymax=ymax_t,
+           fill="#EBF5FB",alpha=0.40)+
+  geom_hline(yintercept=2,linetype="dotted",colour="grey50",linewidth=0.6)+
+  geom_point(alpha=0.88)+
+  scale_colour_manual(values=TCOLS,name=NULL)+
+  scale_shape_manual(values=c("FALSE"=16,"TRUE"=18),guide="none")+
+  scale_size_manual(values=c("FALSE"=1.8,"TRUE"=4.5),guide="none")+
+  scale_x_discrete(breaks=paste0("SNP",c(1,10,M_MQTL,M_MQTL+1,
+                                          M_MQTL+M_NULL,M_TOTAL)))+
+  scale_y_continuous(limits=c(0,ymax_t),expand=c(0,0))+
+  facet_wrap(~method,nrow=3,ncol=3,scales="free_y")+
+  labs(title="Raw test statistics T across all SNPs — three pipeline tiers",
+       subtitle="Dotted = null expectation (2).  Pink = mQTL block.  Blue = true vQTL.  Y-axes free per panel.",
+       x=NULL,y="Test statistic T")+
+  theme_bw(base_size=10)+
+  theme(strip.background=element_rect(fill="#1B2631",colour=NA),
+        strip.text=element_text(colour="white",face="bold",size=10),
+        axis.text.x=element_text(angle=45,hjust=1,size=7),
+        panel.grid.minor=element_blank(),panel.grid.major.x=element_blank(),
+        legend.position="bottom",panel.spacing=unit(0.5,"lines"),
+        plot.title=element_text(face="bold",size=12),
+        plot.subtitle=element_text(size=8.5,colour="grey35"))
+```
+
+---
+
+### mQTL block vs true vQTL: distinguishability
+
+```{r sidebyside, fig.height=5.5, fig.width=14}
+cmp <- rbind(
+  results[type=="mQTL only",
+          .(method,tier,T_stat,grp="Block 1: mQTL (delta=0)\nNULL vQTL")],
+  results[type=="True vQTL",
+          .(method,tier,T_stat,grp=sprintf("Block 3: True vQTL (delta=%.2f)",DELTA))]
+)
+cmp[, grp := factor(grp,levels=c("Block 1: mQTL (delta=0)\nNULL vQTL",
+                                   sprintf("Block 3: True vQTL (delta=%.2f)",DELTA)))]
+
+ggplot(cmp,aes(x=grp,y=T_stat,fill=grp))+
+  geom_boxplot(data=cmp[grp=="Block 1: mQTL (delta=0)\nNULL vQTL"],
+               width=0.45,alpha=0.8,outlier.size=1.2)+
+  geom_point(data=cmp[grp==sprintf("Block 3: True vQTL (delta=%.2f)",DELTA)],
+             shape=18,size=6,alpha=1)+
+  geom_hline(yintercept=2,linetype="dotted",colour="grey55",linewidth=0.7)+
+  scale_fill_manual(
+    values=setNames(c("#E74C3C","#1A5276"),
+                    c("Block 1: mQTL (delta=0)\nNULL vQTL",
+                      sprintf("Block 3: True vQTL (delta=%.2f)",DELTA))),
+    guide="none")+
+  facet_wrap(~method,nrow=2,ncol=4)+
+  labs(title="mQTL block (boxplot) vs true vQTL (diamond) by method",
+       subtitle=paste0(
+         "Naive RINT: box and diamond at same height — indistinguishable.\n",
+         "Wang 2019 (noRINT): box lower than naive, but still above null.\n",
+         "PolyVAR: box at null (~2), diamond clearly isolated."),
+       x=NULL,y="Test statistic T")+
+  theme_bw(base_size=10.5)+
+  theme(strip.background=element_rect(fill="#1B2631",colour=NA),
+        strip.text=element_text(colour="white",face="bold",size=10.5),
+        panel.grid.major.x=element_blank(),panel.grid.minor=element_blank(),
+        panel.spacing=unit(0.5,"lines"),
+        plot.title=element_text(face="bold",size=12),
+        plot.subtitle=element_text(size=9,colour="grey35"),
+        axis.text.x=element_text(size=9))
+```
+
+---
+
+### Block 1 FPR and mean T by method
+
+```{r tier_summary}
+tier_sum <- results[type=="mQTL only", .(
+  median_T = round(median(T_stat,na.rm=TRUE),1),
+  mean_T   = round(mean(T_stat,  na.rm=TRUE),1),
+  pct_sig  = round(mean(sig_bh,  na.rm=TRUE)*100,1)
+), by=.(tier,method)]
+setorder(tier_sum, tier, method)
+knitr::kable(tier_sum,
+  col.names=c("Tier","Method","Median T","Mean T","FPR % (BH 5%)"),
+  align=c("l","l","c","c","c"),
+  caption=paste0("Block 1 (delta=0, mQTL only) summary. Null expectation: T=2, FPR=5%."))
+```
+
+---
+
+### Confusion matrix
+
+```{r cm}
+cm <- results[, .(
+  TP    = sum(is_vqtl  &  sig_bh),
+  FP    = sum(!is_vqtl &  sig_bh),
+  FN    = sum(is_vqtl  & !sig_bh),
+  TN    = sum(!is_vqtl & !sig_bh),
+  FDR   = round(sum(!is_vqtl&sig_bh)/max(sum(sig_bh),1)*100,0),
+  Power = round(sum(is_vqtl&sig_bh)/M_CAU*100,0)
+), by=.(tier,method)]
+cm[, Verdict := fcase(
+  FP==0 & TP==M_CAU, "Correct",
+  FP==0,             "Missed",
+  TP==M_CAU,         "TP + FP",
+  default,           "FP only")]
+knitr::kable(cm,
+  col.names=c("Tier","Method","TP","FP","FN","TN","FDR%","Power%","Verdict"),
+  align=c("l","l","c","c","c","c","c","c","l"),
+  caption=sprintf("Confusion matrix at BH FDR=5%%. True vQTL=SNP%d. Null SNPs=1-%d.",
+                  M_TOTAL, M_TOTAL-1L))
+```
+
+---
+
+### Smoking gun: residual density by genotype group
+
+```{r mechanism, fig.height=4.5, fig.width=13}
+j_demo <- 1L
+g0 <- G[,j_demo]; gs0 <- (g0-2*p)/sq
+r0 <- BETA_M*gs0 + rnorm(N); r0 <- (r0-mean(r0))/sd(r0)
+bh0 <- sum(gs0*r0)/sum(gs0^2); e0 <- r0-bh0*gs0
+er_n <- apply_rint(r0, phi_inv)
+er_o <- apply_rint(e0, phi_inv)
+glab <- c("AA (g=0)","Aa (g=1)","aa (g=2)")[g0+1L]
+
+dt <- rbind(
+  data.table(val=er_n, group=glab, pipe="Naive: RINT(r)"),
+  data.table(val=e0,   group=glab, pipe="Wang 2019: OLS residual\n(no RINT)"),
+  data.table(val=er_o, group=glab, pipe="PolyVAR: RINT(OLS residual)")
+)
+dt[, pipe := factor(pipe,levels=c("Naive: RINT(r)",
+                                   "Wang 2019: OLS residual\n(no RINT)",
+                                   "PolyVAR: RINT(OLS residual)"))]
+vsum <- dt[, .(v=round(var(val),4)), by=.(pipe,group)]
+y_pos <- rep(c(0.55,0.43,0.31),3)
+
+ggplot(dt[, .SD[sample(.N,min(.N,3000))], by=.(pipe,group)],
+       aes(x=val,fill=group,colour=group))+
+  geom_density(alpha=0.28,linewidth=0.85)+
+  geom_text(data=vsum,aes(x=Inf,y=y_pos,
+    label=sprintf("%s: var=%.4f",sub(" .*","",group),v)),
+    inherit.aes=FALSE,hjust=1.05,size=2.8,colour="grey20")+
+  scale_fill_manual(values=c("AA (g=0)"="#2980B9","Aa (g=1)"="#27AE60",
+                              "aa (g=2)"="#C0392B"),name="Genotype")+
+  scale_colour_manual(values=c("AA (g=0)"="#2980B9","Aa (g=1)"="#27AE60",
+                                "aa (g=2)"="#C0392B"),guide="none")+
+  facet_wrap(~pipe,nrow=1)+
+  labs(title=sprintf("Group-conditional residual density (SNP1, beta=%.2f, delta=0)",BETA_M),
+       subtitle=paste0(
+         "Left: naive RINT — group variances differ, Levene fires (FALSE POSITIVE).\n",
+         "Middle: Wang 2019 OLS only — variances partially equalised, residual contamination remains.\n",
+         "Right: PolyVAR RINT(OLS) — group variances equal, contamination = 0."),
+       x="Residual value",y="Density")+
+  theme_bw(base_size=11)+
+  theme(strip.background=element_rect(fill="#1B2631",colour=NA),
+        strip.text=element_text(colour="white",face="bold",size=11),
+        panel.grid.minor=element_blank(),legend.position="bottom",
+        plot.title=element_text(face="bold",size=12),
+        plot.subtitle=element_text(size=9,colour="grey35"))
+```
+
+---
+
+## Interpretation
+
+**Naive RINT:** RINT applied to raw LOCO residual $r_i = \beta g^*_i + \varepsilon_i$ creates spurious group-conditional variance differences. Every Block 1 mQTL is called a vQTL.
+
+**Wang et al. 2019 (no RINT):** OLS removes $\beta g^*$ before testing. This substantially reduces contamination because the residuals are approximately iid. However, because OLS is a linear operation and the residual contamination is a nonlinear function of estimation error, the Frisch-Waugh-Lovell theorem does not apply and some contamination NCP remains. At $n=250{,}000$ with $\beta=0.50$ this residual NCP still exceeds the BH threshold, giving intermediate FPR between naive and PolyVAR.
+
+**PolyVAR:** OLS + RINT + score-space FWL projection. The projection $U_k^c = U_k - \frac{\widehat{\text{Cov}}(U_k,U_\mu)}{\widehat{\text{Var}}(U_\mu)} U_\mu$ is applied in score space where FWL holds exactly, setting the contamination NCP to zero for all $\beta$, $n$, and MAF.
+
+---
+
+## Session info
+
+```{r session, echo=TRUE}
+sessionInfo()
+```

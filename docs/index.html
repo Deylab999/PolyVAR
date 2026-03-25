@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PolyVAR Vignettes</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 700px;
+         margin: 60px auto; padding: 0 24px; color: #212529; }
+  h1   { color: #1B2631; border-bottom: 3px solid #2171B5;
+         padding-bottom: 10px; }
+  h2   { color: #2C3E50; margin-top: 32px; }
+  a    { color: #2171B5; }
+  .box { background: #f8f9fa; border-left: 4px solid #2171B5;
+         padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h1>PolyVAR Vignettes</h1>
+<p>Variance QTL detection with zero contamination NCP.</p>
+
+<h2>Vignettes</h2>
+<div class="box">
+  <b><a href="polyvar_demo_250k.html">Method Comparison Demo — n=250,000</a></b><br>
+  Worked example comparing all 7 methods across three pipeline tiers:
+  Naive RINT, Wang et al. 2019 (no-RINT), and PolyVAR.
+  Shows false positive inflation in Block 1 mQTL SNPs and clean detection
+  of the true vQTL by PolyVAR.
+</div>
+<div class="box">
+  <b><a href="vignette_power_fdr.html">Power & BH-FDR Tables — n=250,000</a></b><br>
+  Analytical simulation across a 10×10 (β, δ) grid.
+  Shows FPR inflation at β≥0.28 for Levene/BF/Bartlett
+  and zero contamination for PolyVAR.
+</div>
+
+<h2>Installation</h2>
+<pre style="background:#f4f4f4;padding:12px;border-radius:4px">
+devtools::install_github("Deylab999/PolyVAR")
+</pre>
+
+<p style="margin-top:40px;font-size:.85em;color:#999">
+  <a href="https://github.com/Deylab999/PolyVAR">GitHub</a> &mdash;
+  PolyVAR v0.5.1
+</p>
+</body>
+</html>
