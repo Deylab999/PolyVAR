@@ -67,3 +67,5 @@ inst/demo/polyvar_demo/
 polyvar_results/
 demo_results/
 cli_test_out/
+polyvar/
+polyvar_release/
