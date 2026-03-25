@@ -1,0 +1,3 @@
+phenotype	causal_snp	beta	gamma
+PHENO1	SNP10	0.25	0.2
+PHENO2	SNP50	0	0.15
