@@ -405,6 +405,32 @@ Contamination control:
 Note: contamination effects become large at n≥10,000 (see paper Section 5).
 At biobank scale (n≥100,000), Levene FPR at β=0.25-0.30 exceeds 50-99%.
 
+
+## Troubleshooting installation
+
+If you see `lazy-load database ... is corrupt` or functions appear missing
+after `install_github()`, the fix is a clean session:
+```r
+detach("package:polyvar", unload = TRUE, force = TRUE)
+unloadNamespace("polyvar")
+remove.packages("polyvar")
+```
+
+Then **fully quit and reopen R/RStudio** (not just Restart Session), and reinstall:
+```r
+devtools::install_github("Deylab999/PolyVAR", force = TRUE)
+library(polyvar)
+```
+
+Alternatively, use `pak` which handles namespace conflicts more cleanly:
+```r
+install.packages("pak")
+pak::pkg_install("Deylab999/PolyVAR", upgrade = TRUE)
+```
+
+This issue only affects re-installation into an active R session where the
+old package is still loaded. A clean session always installs correctly.
+
 ## Citation
 
 If you use PolyVAR, please cite:
