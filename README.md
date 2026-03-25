@@ -1,4 +1,4 @@
-# PolyVAR: Contrastive Variance QTL Detection
+# PolyVAR: Biobank-scale efficient Variance QTL Mapping
 
 [![Version](https://img.shields.io/badge/version-0.5.0-blue)](https://github.com/Deylab999/PolyVAR)
 [![License: GPL-3](https://img.shields.io/badge/License-GPL3-green.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -7,11 +7,16 @@
 
 ## The Problem PolyVAR Solves
 
-Standard vQTL tests (Levene, Brown-Forsythe, Bartlett) applied to RINT-transformed residuals suffer from a fundamental flaw at biobank scale: the RINT transformation introduces a nonlinear coupling between the mean genetic effect (β) and the variance test statistic, generating a **contamination NCP ∝ n·β⁴** that inflates false positive rates and collapses power.
+Standard vQTL tests (Levene, Brown-Forsythe, Bartlett) are fundamentally incompatible with the rank-based inverse normal 
+transformation used at biobank scale. The RINT step introduces a nonlinear coupling between mean and variance test statistics 
+that grows with sample size, inflating false positive rates and collapsing detection power at loci with co-located mean effects — 
+even after standard residualisation on the estimated mean. 
 
-**Standard two-stage residualisation on β̂ does not fix this**: this is already what these methods do. The contamination survives because RINT is nonlinear and OLS residualisation in phenotype space does not guarantee orthogonality in the score space where the chi-squared statistic is computed.
+PolyVAR eliminates this contamination exactly by projecting the variance score statistics orthogonal to the mean score 
+direction before forming the test statistic, exploiting the Frisch–Waugh–Lovell theorem in the score space where 
+the chi-squared statistic is computed. The result is a calibrated 2 d.f. chi-squared statistic with zero contamination 
+non-centrality parameter, full preservation of the GxE signal, and correct type I error control at all sample sizes.
 
-PolyVAR eliminates contamination by projecting the variance scores (U₁, U₂) out of the mean score direction (U_μ) directly in score space — where the Frisch-Waugh-Lovell theorem guarantees exact orthogonality.
 
 ## Power comparison (n=275K, γ=0.10, MAF=0.25, α=5×10⁻⁸)
 
