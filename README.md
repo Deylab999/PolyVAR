@@ -406,6 +406,17 @@ Note: contamination effects become large at n≥10,000 (see paper Section 5).
 At biobank scale (n≥100,000), Levene FPR at β=0.25-0.30 exceeds 50-99%.
 
 
+
+
+## Vignettes
+
+| Vignette | Description |
+|---|---|
+| [Method comparison demo](https://deylab999.github.io/PolyVAR/polyvar_demo_250k.html) | 7-method comparison at n=250,000 — naive RINT vs Wang 2019 vs PolyVAR |
+| [Power & FDR tables](https://deylab999.github.io/PolyVAR/vignette_power_fdr.html) | Analytical simulation across 10×10 (β, δ) grid |
+
+
+
 ## Troubleshooting installation
 
 If you see `lazy-load database ... is corrupt` or functions appear missing
