@@ -1,0 +1,24 @@
+# R build artefacts
+*.Rproj.user
+*.Rhistory
+*.RData
+*.Ruserdata
+.Rcheck/
+*.tar.gz
+*.zip
+
+# Compiled objects
+*.o
+*.so
+*.dll
+src/*.o
+src/*.so
+src/RcppExports.cpp
+
+# Generated files
+R/RcppExports.R
+man/
+
+# OS files
+.DS_Store
+Thumbs.db
