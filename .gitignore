@@ -59,7 +59,7 @@ $RECYCLE.BIN/
 *.swo
 
 # ── pkgdown website (if auto-generated) ──────────────────────
-docs/
+#docs/
 
 # ── Test output and temporary files ─────────────────────────
 tests/testthat/_snaps/
